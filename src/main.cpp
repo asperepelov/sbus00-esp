@@ -12,8 +12,7 @@
 #define SBUS_NUM_CHANNELS 16
 
 /* Выходной SBUS */
-bfs::SbusTx sbus_tx(&Serial1, SBUSOUT_RX_PIN, SBUSOUT_TX_PIN, false);
-/* SBUS data */
+bfs::SbusTx sbus_tx(&Serial1, SBUSOUT_RX_PIN, SBUSOUT_TX_PIN, true);
 bfs::SbusData data;
 
 // Массив для хранения значений каналов
@@ -57,10 +56,8 @@ void setup() {
   // Обработка входного SBUS
   Serial2.begin(SBUS_BAUDRATE, SBUS_CONFIG, SBUSIN_RX_PIN, SBUSIN_TX_PIN);
   Serial2.setRxInvert(true);
-  // Выходной SBUS
-  // Serial1.begin(SBUS_BAUDRATE, SBUS_CONFIG, SBUSOUT_RX_PIN, SBUSOUT_TX_PIN);
   
-  // Инициализация SBUS для записи
+  // Инициализация SBUS для выхода
   sbus_tx.Begin();
   
   Serial.println("Setup completed. Waiting for SBUS frames...");
@@ -97,17 +94,10 @@ void loop() {
         data.ch[i] = channels[i];
       }
       sbus_tx.data(data);
-      for (size_t i = 0; i < SBUS_NUM_CHANNELS; i++) {
-        Serial.print(i+1);
-        Serial.print(":");
-        Serial.print(data.ch[i]);
-        Serial.print(" ");
-      }      
-      Serial.println();
       sbus_tx.Write();
 
       // Выводим значения каналов
-      //printChannels();
+      printChannels();
       
       sbusIndex = 0;
       lastFrameTime = millis();
