@@ -1,35 +1,23 @@
 #include <Arduino.h>
+#include <HardwareSerial.h>
+#include "sbus.h"
 
-#define SBUS_RX_PIN 16 // GPIO16 (RX2)
-#define SBUS_TX_PIN 17 // GPIO17 (TX2)
+#define SBUSIN_RX_PIN 16 // GPIO16 (RX2)
+#define SBUSIN_TX_PIN 17 // GPIO17 (TX2)
+#define SBUSOUT_RX_PIN 12 // GPIO12 
+#define SBUSOUT_TX_PIN 13 // GPIO13
 #define SBUS_BAUDRATE 100000
 #define SBUS_CONFIG SERIAL_8E2
 #define SBUS_FRAME_SIZE 25
 #define SBUS_NUM_CHANNELS 16
 
+/* Выходной SBUS */
+bfs::SbusTx sbus_tx(&Serial1, SBUSOUT_RX_PIN, SBUSOUT_TX_PIN, false);
+/* SBUS data */
+bfs::SbusData data;
+
 // Массив для хранения значений каналов
 uint16_t channels[SBUS_NUM_CHANNELS];
-
-void setup() {
-  pinMode(SBUS_RX_PIN, INPUT_PULLUP);
-  pinMode(SBUS_TX_PIN, OUTPUT);
-  Serial.begin(115200);
-  Serial2.begin(SBUS_BAUDRATE, SBUS_CONFIG, SBUS_RX_PIN, SBUS_TX_PIN);
-  Serial2.setRxInvert(true);  
-  Serial.println("Setup completed. Waiting for SBUS frames...");
-  
-  // Добавим проверку инициализации UART2
-  if (!Serial2) {
-    Serial.println("Failed to initialize UART2");
-  } else {
-    Serial.println("UART2 initialized successfully");
-  }
-}
-
-// Функция для инверсии всех битов в байте
-uint8_t invertByte(uint8_t byte) {
-  return ~byte;
-}
 
 // Декодирование каналов SBUS
 void decodeChannels(uint8_t* frame) {
@@ -58,9 +46,31 @@ void printChannels() {
     Serial.print(":");
     Serial.print(channels[i]);
     Serial.print(" ");
-    // if ((i + 1) % 4 == 0) Serial.println();
   }
   Serial.println();
+}
+
+void setup() {
+  pinMode(SBUSIN_RX_PIN, INPUT_PULLUP);
+  pinMode(SBUSIN_TX_PIN, OUTPUT);
+  Serial.begin(115200); // Терминал
+  // Обработка входного SBUS
+  Serial2.begin(SBUS_BAUDRATE, SBUS_CONFIG, SBUSIN_RX_PIN, SBUSIN_TX_PIN);
+  Serial2.setRxInvert(true);
+  // Выходной SBUS
+  // Serial1.begin(SBUS_BAUDRATE, SBUS_CONFIG, SBUSOUT_RX_PIN, SBUSOUT_TX_PIN);
+  
+  // Инициализация SBUS для записи
+  sbus_tx.Begin();
+  
+  Serial.println("Setup completed. Waiting for SBUS frames...");
+  
+  // Добавим проверку инициализации UART2
+  if (!Serial2) {
+    Serial.println("Failed to initialize UART2");
+  } else {
+    Serial.println("UART2 initialized successfully");
+  }
 }
 
 void loop() {
@@ -70,8 +80,6 @@ void loop() {
 
   while (Serial2.available()) {
     uint8_t incomingByte = Serial2.read();
-    // uint8_t writeByte = incomingByte;
-    uint8_t writeByte = invertByte(incomingByte);
     
     if (sbusIndex == 0 && incomingByte != 0x0F) {
       continue;
@@ -80,28 +88,27 @@ void loop() {
     sbusFrame[sbusIndex] = incomingByte;
     sbusIndex++;
 
-    if (sbusIndex != SBUS_FRAME_SIZE) {
-      Serial2.write(&writeByte, 1);
-    } else {
-      writeByte = 0x00;
-      // writeByte = invertByte(0x00);
-      Serial2.write(&writeByte, 1);
-
+    if (sbusIndex == SBUS_FRAME_SIZE) {
       // Декодируем каналы
       decodeChannels(sbusFrame);
 
-      // Выводим значения каналов
-      printChannels();
-      
-      // Выводим сырые данные кадра
-      // for (int i = 0; i < SBUS_FRAME_SIZE; i++) {
-      //   Serial.print(i + 1);
-      //   Serial.print(":");
-      //   Serial.print(sbusFrame[i], HEX);
-      //   Serial.print(" ");
-      // }
-      // Serial.println();
+      // Отправляем данные через SBUS
+      for (size_t i = 0; i < SBUS_NUM_CHANNELS; i++) {
+        data.ch[i] = channels[i];
+      }
+      sbus_tx.data(data);
+      for (size_t i = 0; i < SBUS_NUM_CHANNELS; i++) {
+        Serial.print(i+1);
+        Serial.print(":");
+        Serial.print(data.ch[i]);
+        Serial.print(" ");
+      }      
+      Serial.println();
+      sbus_tx.Write();
 
+      // Выводим значения каналов
+      //printChannels();
+      
       sbusIndex = 0;
       lastFrameTime = millis();
     }
